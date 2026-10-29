@@ -1,0 +1,36 @@
+# Dependencies and generated output
+node_modules/
+.vite/
+out/
+test-results/
+playwright-report/
+coverage/
+*.log
+
+# Local settings, credentials and diagnostics
+.env
+.env.*
+.npmrc
+*.local
+*.local.*
+*.pem
+*.key
+*.p12
+*.pfx
+connections.json
+connections.json.*
+user-data/
+userdata/
+diagnostics/
+*.har
+*.dmp
+*.heapsnapshot
+*.cpuprofile
+DevToolsActivePort
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

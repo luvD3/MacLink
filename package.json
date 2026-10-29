@@ -1,0 +1,47 @@
+{
+  "name": "maclink-viewer",
+  "productName": "MacLink",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "description": "A Windows VNC viewer for macOS Screen Sharing",
+  "author": "MacLink contributors",
+  "main": ".vite/build/main.cjs",
+  "scripts": {
+    "postinstall": "install-electron",
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make --platform=win32 --arch=x64",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "npm run package && playwright test",
+    "verify": "npm run typecheck && npm test"
+  },
+  "config": {
+    "forge": "./forge.config.cjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@novnc/novnc": "1.7.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "ws": "^8.18.3",
+    "zlib-streams": "1.4.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "@electron-forge/plugin-vite": "8.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "^22.18.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/ws": "^8.18.1",
+    "electron": "45.1.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}
