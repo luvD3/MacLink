@@ -12,6 +12,7 @@ jobs:
       - run: npm ci
       - run: npm run verify
       - run: npm run test:e2e
+      - run: npm run make -- --from-package
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

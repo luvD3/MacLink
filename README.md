@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  Windows 11 x64 · v0.1.5 · 早期版本
+  Windows 11 x64 · v0.1.6 · 早期版本
 </p>
 
 <p align="center">
@@ -44,9 +44,11 @@ MacLink 是面向 Windows 的 VNC 客户端，适合在局域网中使用 Mac。
 
 ### 2. 运行 Windows 客户端
 
-解压 `MacLink-win32-x64-0.1.5.zip`，运行其中的 `MacLink.exe`。请保留解压目录中的其他文件。
+推荐运行 `MacLink-0.1.6-Setup.exe`，安装到当前用户目录，并创建桌面与开始菜单快捷方式。卸载入口在 Windows“设置 → 应用 → 安装的应用”中。
 
-当前尚未配置公共下载渠道。已有 ZIP 可直接运行；从源码生成 ZIP 的方式见 [开发](#开发)。
+也可解压便携版 `MacLink-win32-x64-0.1.6.zip`，运行其中的 `MacLink.exe`。请保留解压目录中的其他文件。
+
+当前安装包未做代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。尚未配置公共下载渠道，从源码生成安装包与 ZIP 的方式见 [开发](#开发)。安装位置、更新和卸载说明见 [安装指南](docs/INSTALLATION.md)。
 
 ### 3. 添加连接
 
@@ -104,7 +106,7 @@ MacLink 是面向 Windows 的 VNC 客户端，适合在局域网中使用 Mac。
 
 连接配置保存在 `%APPDATA%/MacLink/connections.json`，以 Electron 的 `userData` 路径为准。配置含连接名称、地址、端口和显示偏好；密码仅用于当前会话。
 
-当前手动更新：退出应用后，解压新的完整 ZIP 并运行。替换应用目录不会清除用户数据目录中的连接配置。
+当前手动更新：退出应用后，安装版运行新版本 Setup，便携版解压新的完整 ZIP。配置保存在应用目录之外，更新或卸载不会主动删除连接配置；两种版本使用同一用户数据目录。
 
 ## 兼容性与限制
 
@@ -113,7 +115,7 @@ MacLink 是面向 Windows 的 VNC 客户端，适合在局域网中使用 Mac。
 | Windows | Windows 11 x64；鼠标坐标自动化覆盖 100% / 150% DPI |
 | Mac | macOS Sequoia 15.8.2，内置屏幕共享、Apple 账户认证 |
 | 半尺寸传输 | 上述实机已验证 4K → 1080p；仅对 `RFB 003.889` Apple 服务启用 |
-| 自动化 | 0.1.5 已完成 TypeScript 检查、169 项 Vitest 检查和 13 项 Electron E2E 流程 |
+| 自动化 | 0.1.6 已完成 TypeScript 检查、178 项 Vitest 检查和 14 项 Electron E2E 流程 |
 
 其他 macOS 版本尚未实测。模拟 RFB 服务的测试结果不代表所有真实服务器均兼容，完整记录见 [验收文档](docs/VALIDATION.md)。
 
@@ -147,9 +149,11 @@ npm start
 | `npm run verify` | TypeScript 检查与 Vitest 单元测试 |
 | `npm run test:e2e` | 打包应用，并通过本机模拟 RFB 服务运行 Electron 集成测试 |
 | `npm run package` | 生成可运行的应用目录 |
-| `npm run make` | 生成 Windows x64 ZIP |
+| `npm run make` | 生成 Windows x64 安装包与 ZIP |
+| `npm run make:installer` | 仅生成 Windows 安装包 |
+| `npm run make:zip` | 仅生成 ZIP 便携版 |
 
-ZIP 输出到 `out/make/zip/win32/x64/`，可运行程序位于 `out/MacLink-win32-x64/`。E2E 会操作测试窗口，运行前请结束占用同一打包目录的 MacLink 实例。
+安装包输出到 `out/make/squirrel.windows/x64/`，ZIP 输出到 `out/make/zip/win32/x64/`，可运行程序位于 `out/MacLink-win32-x64/`。E2E 会操作测试窗口，运行前请结束占用同一打包目录的 MacLink 实例。
 
 ### 项目结构
 
@@ -166,6 +170,7 @@ src/
     remote-input.ts       焦点与键盘捕获
     vnc/                  noVNC 适配、ZRLE 解码、传输缩放
 build/                    Vite 构建适配源码
+assets/                   应用图标及其 SVG 源文件
 tests/                    单元测试
 e2e/                      模拟 RFB 服务与 Electron 测试
 scripts/                  基准与诊断工具
@@ -195,6 +200,7 @@ noVNC 的内部接口适配集中在 `src/renderer/vnc/` 和 `build/novnc-decode
 
 ## 文档
 
+- [Windows 安装、更新与卸载](docs/INSTALLATION.md)
 - [传输缩放与延迟实测](docs/TRANSMISSION-SCALING.md)
 - [解码器、请求调度与升级维护](docs/DECODER.md)
 - [4K 交互延迟记录](docs/INTERACTION-LATENCY.md)

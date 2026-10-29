@@ -2,11 +2,16 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, powerMonitor } from 'el
 import path from 'node:path';
 import { ConfigStore } from './main/config-store';
 import { TransportManager } from './main/transport';
+import { handleInstallerEvent } from './main/installer';
+
+if (process.platform === 'win32') app.setAppUserModelId('com.squirrel.MacLink.MacLink');
 
 // An alternate data directory also lets integration tests run without touching user profiles.
 if (process.env.MACLINK_DATA_DIR) app.setPath('userData', process.env.MACLINK_DATA_DIR);
 
-if (!app.requestSingleInstanceLock()) {
+if (handleInstallerEvent()) {
+  // Installer events finish before taking the app lock or opening a window.
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   let window: BrowserWindow | undefined;

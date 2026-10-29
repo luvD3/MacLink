@@ -93,7 +93,7 @@ test.afterEach(async ({}, testInfo) => {
 });
 
 test('connection editing survives restart and deletion is explicit', async ({}, testInfo) => {
-  await launch();
+  await launch(['--squirrel-firstrun']);
   await page.screenshot({ path: testInfo.outputPath('welcome.png') });
   await addConnection(5900, '书房的 Mac');
   await page.getByRole('button', { name: '编辑 书房的 Mac', exact: true }).click();

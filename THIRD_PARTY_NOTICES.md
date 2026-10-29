@@ -19,5 +19,10 @@ Electron includes Chromium, Node.js, and their third-party components. See
 `LICENSE` and `LICENSES.chromium.html` in the application distribution.
 React, React DOM and ws use the MIT license; their notices are in `resources/third-party`.
 
+The Windows installer and Update.exe use Squirrel.Windows (MIT), built through
+Electron Forge and electron-winstaller. Its license is distributed in
+`resources/third-party/Squirrel.Windows/LICENSE`.
+Source: https://github.com/Squirrel/Squirrel.Windows.
+
 The repository does not grant a license to MacLink's original code yet.
 Choose an appropriate project license before public redistribution.

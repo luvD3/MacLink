@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>MacLink</title>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#253e35"/>
+  <rect x="40" y="50" width="126" height="91" rx="15" fill="#253e35" stroke="#83b999" stroke-width="12"/>
+  <path d="M150 192v18m-22 0h44" fill="none" stroke="#f5f9f3" stroke-width="10" stroke-linecap="round"/>
+  <rect x="84" y="96" width="132" height="96" rx="15" fill="#253e35" stroke="#f5f9f3" stroke-width="12"/>
+  <circle cx="194" cy="170" r="5" fill="#83b999"/>
+</svg>
