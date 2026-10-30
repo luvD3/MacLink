@@ -44,11 +44,11 @@ MacLink 是面向 Windows 的 VNC 客户端，适合在局域网中使用 Mac。
 
 ### 2. 运行 Windows 客户端
 
-推荐运行 `MacLink-0.1.8-Setup.exe`，安装到当前用户目录，并创建桌面与开始菜单快捷方式。卸载入口在 Windows“设置 → 应用 → 安装的应用”中。
+推荐下载并运行 [MacLink-0.1.8-Setup.exe](https://github.com/luvD3/MacLink/releases/download/v0.1.8/MacLink-0.1.8-Setup.exe)，安装到当前用户目录，并创建桌面与开始菜单快捷方式。卸载入口在 Windows“设置 → 应用 → 安装的应用”中。
 
-也可解压便携版 `MacLink-win32-x64-0.1.8.zip`，运行其中的 `MacLink.exe`。请保留解压目录中的其他文件。
+也可下载 [MacLink-win32-x64-0.1.8.zip](https://github.com/luvD3/MacLink/releases/download/v0.1.8/MacLink-win32-x64-0.1.8.zip)，完整解压后运行其中的 `MacLink.exe`。请保留解压目录中的其他文件。
 
-当前安装包未做代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。尚未配置公共下载渠道，从源码生成安装包与 ZIP 的方式见 [开发](#开发)。安装位置、更新和卸载说明见 [安装指南](docs/INSTALLATION.md)。
+当前安装包未做代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。版本说明和 SHA-256 校验值见 [GitHub Releases](https://github.com/luvD3/MacLink/releases/tag/v0.1.8)，从源码生成安装包与 ZIP 的方式见 [开发](#开发)。安装位置、更新和卸载说明见 [安装指南](docs/INSTALLATION.md)。
 
 ### 3. 添加连接
 

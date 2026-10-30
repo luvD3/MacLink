@@ -2,6 +2,11 @@
 
 MacLink 0.1.8 提供 Windows 11 x64 安装包与 ZIP 便携版。两种形式都包含 Electron 运行时，使用者无须安装 Node.js。
 
+从 [GitHub Releases](https://github.com/luvD3/MacLink/releases/tag/v0.1.8) 下载
+[安装包](https://github.com/luvD3/MacLink/releases/download/v0.1.8/MacLink-0.1.8-Setup.exe) 或
+[便携 ZIP](https://github.com/luvD3/MacLink/releases/download/v0.1.8/MacLink-win32-x64-0.1.8.zip)。
+发布页附有 SHA-256 校验值。
+
 ## 安装版
 
 运行 `MacLink-0.1.8-Setup.exe`。安装器使用 [Squirrel.Windows](https://www.electronforge.io/config/makers/squirrel.windows)，默认安装到当前用户的 `%LOCALAPPDATA%/MacLink/`，创建桌面和开始菜单快捷方式，完成后启动应用。
