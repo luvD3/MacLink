@@ -1,7 +1,10 @@
 import UpstreamRFB from '@maclink/novnc-rfb';
+import { clientToElement } from '@maclink/novnc-element';
 import type { TransmissionScale } from '../../shared/types';
 
 const DRAG_MOVE_DELAY = 8;
+const WHEEL_STEP = 50;
+const WHEEL_LINE_HEIGHT = 19;
 type FramebufferSize = Readonly<{ width: number; height: number }>;
 type Bounds = { left: number; top: number; right: number; bottom: number };
 
@@ -23,8 +26,7 @@ function subtractCoveredBounds(uncovered: Bounds[], covered: Bounds): Bounds[] {
   });
 }
 
-/** Preserve noVNC 1.7's parsers while overlapping update requests and reducing
- * the mouse movement delay during dragging. */
+/** Keep noVNC's parsers while adapting update scheduling, Apple scaling and input. */
 export default class PipelinedRFB extends UpstreamRFB {
   private pipelineEnabled = true;
   private earlyRequest: { width: number; height: number } | undefined;
@@ -82,6 +84,7 @@ export default class PipelinedRFB extends UpstreamRFB {
   }
 
   protected override _disconnect(): void {
+    this._accumulatedWheelDeltaX = this._accumulatedWheelDeltaY = 0;
     this.queuedScale = this.awaitingScale = undefined;
     this.transmissionScaleRequested = false;
     this.earlyRequest = undefined;
@@ -154,6 +157,34 @@ export default class PipelinedRFB extends UpstreamRFB {
         this._mouseMoveTimer = setTimeout(() => this._handleDelayedMouseMove(), DRAG_MOVE_DELAY - elapsed);
       }
     }
+  }
+
+  protected override _handleWheel(event: WheelEvent): void {
+    if (this._rfbConnectionState !== 'connected' || this._viewOnly) {
+      this._accumulatedWheelDeltaX = this._accumulatedWheelDeltaY = 0;
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const position = clientToElement(event.clientX, event.clientY, this._canvas);
+    const buttons = UpstreamRFB._convertButtonMask(event.buttons);
+    const mode = event.deltaMode;
+    const unitX = mode === 2 ? this._screen.clientWidth : mode === 1 ? WHEEL_LINE_HEIGHT : 1;
+    const unitY = mode === 2 ? this._screen.clientHeight : mode === 1 ? WHEEL_LINE_HEIGHT : 1;
+
+    // A coalesced DOM event may contain several wheel steps. Consume all of
+    // them and retain sub-step motion instead of dropping it after one click.
+    const sendSteps = (delta: number, negativeMask: number, positiveMask: number): number => {
+      const steps = Math.trunc(delta / WHEEL_STEP);
+      const wheelMask = steps < 0 ? negativeMask : positiveMask;
+      for (let step = 0; step < Math.abs(steps); step++) {
+        this._handleMouseButton(position.x, position.y, buttons | wheelMask);
+        this._handleMouseButton(position.x, position.y, buttons);
+      }
+      return delta - steps * WHEEL_STEP;
+    };
+    this._accumulatedWheelDeltaX = sendSteps(this._accumulatedWheelDeltaX + event.deltaX * unitX, 32, 64);
+    this._accumulatedWheelDeltaY = sendSteps(this._accumulatedWheelDeltaY + event.deltaY * unitY, 8, 16);
   }
 
   protected override _normalMsg(): boolean {

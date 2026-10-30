@@ -35,6 +35,12 @@ declare module '@maclink/novnc-rfb' {
     protected _mousePos: { x: number; y: number };
     protected _mouseLastMoveTime: number;
     protected _mouseMoveTimer: ReturnType<typeof setTimeout> | null;
+    protected _canvas: HTMLCanvasElement;
+    protected _screen: HTMLDivElement;
+    protected _accumulatedWheelDeltaX: number;
+    protected _accumulatedWheelDeltaY: number;
+    protected _handleWheel(event: WheelEvent): void;
+    protected _handleMouseButton(x: number, y: number, mask: number): void;
     protected _handleMouseMove(x: number, y: number): void;
     protected _handleDelayedMouseMove(): void;
     protected _sendMouse(x: number, y: number, mask: number): void;
@@ -44,12 +50,17 @@ declare module '@maclink/novnc-rfb' {
     protected _normalMsg(): boolean;
     protected _framebufferUpdate(): boolean;
     protected _handleDataRect(): boolean;
+    static _convertButtonMask(buttons: number): number;
     static messages: {
       fbUpdateRequest(socket: ReceiveQueue, incremental: boolean, x: number, y: number, width: number, height: number): void;
       pointerEvent(socket: ReceiveQueue, x: number, y: number, mask: number): void;
       extendedPointerEvent(socket: ReceiveQueue, x: number, y: number, mask: number): void;
     };
   }
+}
+
+declare module '@maclink/novnc-element' {
+  export function clientToElement(x: number, y: number, element: HTMLElement): { x: number; y: number };
 }
 
 declare module '@maclink/novnc-zlib' {

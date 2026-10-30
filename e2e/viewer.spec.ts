@@ -441,6 +441,70 @@ for (const dpi of [1, 1.5]) {
   });
 }
 
+test('wheel distance survives coalescing and half-size transmission at 150% DPI', async () => {
+  const server = await startVncServer({ width: 3840, height: 2160, appleScaling: true, clipboardText: null });
+  servers.push(server);
+  await launch(['--force-device-scale-factor=1.5']);
+  await pauseClipboardBeforeConnecting();
+  await addConnection(server.port);
+  await page.getByTestId('connect').click();
+  await expect(page.locator('[data-session-state]')).toHaveAttribute('data-session-state', 'connected');
+  const canvas = page.getByTestId('remote-screen').locator('canvas');
+  await expect(canvas).toHaveAttribute('width', '3840');
+
+  const wheelBatch = async (deltas: number[][], masks: number[], actual = false, heldButtons = 0) => {
+    const before = server.pointers.length;
+    const point = await canvas.evaluate((element, { deltas, actual, heldButtons }) => {
+      const target = element as HTMLCanvasElement, screen = target.parentElement!;
+      if (actual) {
+        screen.scrollLeft = target.width * .73 - screen.clientWidth / 2;
+        screen.scrollTop = target.height * .62 - screen.clientHeight / 2;
+      }
+      const bounds = target.getBoundingClientRect();
+      const clientX = bounds.x + bounds.width * .73, clientY = bounds.y + bounds.height * .62;
+      for (const [deltaX, deltaY] of deltas) target.dispatchEvent(new WheelEvent('wheel', {
+        clientX, clientY, deltaX, deltaY, deltaMode: 0, buttons: heldButtons, bubbles: true, cancelable: true,
+      }));
+      return { hitCanvas: document.elementFromPoint(clientX, clientY) === target, tolerance: Math.ceil(3840 / bounds.width) + 1 };
+    }, { deltas, actual, heldButtons });
+    expect(point.hitCanvas).toBe(true);
+    await expect.poll(() => server.pointers.slice(before).map(event => event.buttons)).toEqual(masks);
+    for (const event of server.pointers.slice(before)) {
+      expect(Math.abs(event.x - 3840 * .73)).toBeLessThanOrEqual(point.tolerance);
+      expect(Math.abs(event.y - 2160 * .62)).toBeLessThanOrEqual(point.tolerance);
+    }
+  };
+  const pairs = (button: number, count: number, held = 0) => Array.from({ length: count }, () => [button | held, held]).flat();
+
+  await wheelBatch([[0, 300]], pairs(16, 6));
+  await wheelBatch(Array.from({ length: 5 }, () => [0, -120]), pairs(8, 12));
+  await wheelBatch(Array.from({ length: 10 }, () => [0, 5]), pairs(16, 1));
+  await wheelBatch([[-100, 150]], [...pairs(32, 2), ...pairs(16, 3)]);
+  await wheelBatch([[0, 100]], pairs(16, 2, 4), false, 2); // DOM right button maps to RFB mask 4.
+  await canvas.dispatchEvent('mouseup', { button: 2, buttons: 0 });
+  await expect.poll(() => server.pointers.at(-1)?.buttons).toBe(0);
+
+  await page.keyboard.press('F8');
+  await expect(page.getByTestId('session-toolbar')).toHaveCSS('opacity', '1');
+  await page.getByTestId('transmission-scale').selectOption('half');
+  await expect(canvas).toHaveAttribute('width', '1920');
+  await expect(page.getByTestId('transmission-status')).toHaveText('1920 × 1080');
+  await wheelBatch([[0, 300]], pairs(16, 6));
+  await revealControls();
+  await page.getByTestId('scale-actual').click();
+  await expect.poll(() => canvas.evaluate(element => Math.round(element.getBoundingClientRect().width))).toBe(1920);
+  await wheelBatch([[0, -300]], pairs(8, 6), true);
+
+  await revealControls();
+  await page.locator('.toolbar-view-only input').check();
+  const beforeViewOnly = server.pointers.filter(event => event.buttons & 120).length;
+  await canvas.dispatchEvent('wheel', { deltaY: 300, bubbles: true, cancelable: true });
+  await page.locator('.toolbar-view-only input').uncheck();
+  // Wait for a subsequent wheel command over the same ordered TCP connection.
+  await wheelBatch([[0, 50]], pairs(16, 1), true);
+  expect(server.pointers.filter(event => event.buttons & 120).length - beforeViewOnly).toBe(1);
+});
+
 test('pending drag sends the final scaled position before release and is cancelled on disconnect', async () => {
   const server = await startVncServer({ width: 3840, height: 2160 });
   servers.push(server);

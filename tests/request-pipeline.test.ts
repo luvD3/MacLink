@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { MockRFB, request, pointer, extendedPointer } = vi.hoisted(() => {
+const { MockRFB, request, pointer, extendedPointer, clientToElement } = vi.hoisted(() => {
   class Socket {
     data: number[] = [];
     offset = 0;
@@ -22,9 +22,14 @@ const { MockRFB, request, pointer, extendedPointer } = vi.hoisted(() => {
   const request = vi.fn();
   const pointer = vi.fn();
   const extendedPointer = vi.fn();
+  const clientToElement = vi.fn((x: number, y: number) => ({ x, y }));
   class MockRFB extends EventTarget {
     static messages = { fbUpdateRequest: request, pointerEvent: pointer, extendedPointerEvent: extendedPointer };
+    static _convertButtonMask = vi.fn((buttons: number) =>
+      (buttons & 1) | ((buttons & 2) << 1) | ((buttons & 4) >> 1) | ((buttons & 24) << 4));
     _sock = new Socket();
+    _canvas = {} as HTMLCanvasElement;
+    _screen = { clientWidth: 800, clientHeight: 600 };
     _FBU = { rects: 0, encoding: 16, x: 0, y: 0, width: 0, height: 0 };
     _display = { pending: vi.fn(() => false), absX: vi.fn((x: number) => x), absY: vi.fn((y: number) => y) };
     _rfbConnectionState = 'connected';
@@ -38,6 +43,8 @@ const { MockRFB, request, pointer, extendedPointer } = vi.hoisted(() => {
     _mousePos = { x: 0, y: 0 };
     _mouseLastMoveTime = 0;
     _mouseMoveTimer: ReturnType<typeof setTimeout> | null = null;
+    _accumulatedWheelDeltaX = 0;
+    _accumulatedWheelDeltaY = 0;
     hoverMove = vi.fn();
     delayedMove = vi.fn();
     sendMouse = vi.fn();
@@ -59,13 +66,18 @@ const { MockRFB, request, pointer, extendedPointer } = vi.hoisted(() => {
     _resize(width: number, height: number): void { this._fbWidth = width; this._fbHeight = height; }
     _disconnect(): void { this._rfbConnectionState = 'disconnected'; }
     _sendMouse(x: number, y: number, mask: number): void { this.sendMouse(x, y, mask); }
+    _handleMouseButton(x: number, y: number, mask: number): void {
+      this._mouseButtonMask = mask;
+      this._sendMouse(x, y, mask);
+    }
     _handleMouseMove(x: number, y: number): void { this.hoverMove(x, y); }
     _handleDelayedMouseMove(): void { this.delayedMove(); }
   }
-  return { MockRFB, request, pointer, extendedPointer };
+  return { MockRFB, request, pointer, extendedPointer, clientToElement };
 });
 
 vi.mock('@maclink/novnc-rfb', () => ({ default: MockRFB }));
+vi.mock('@maclink/novnc-element', () => ({ clientToElement }));
 
 import PipelinedRFB from '../src/renderer/vnc/pipelined-rfb';
 
@@ -74,6 +86,7 @@ class TestRFB extends PipelinedRFB {
   constructor() { super({} as HTMLElement, 'ws://fixture'); }
   process(): boolean { return this._normalMsg(); }
   move(x: number, y: number): void { this._handleMouseMove(x, y); }
+  wheel(event: WheelEvent): void { this._handleWheel(event); }
   handshake(): boolean | void { return this._negotiateProtocolVersion(); }
   resize(width: number, height: number): void { this._resize(width, height); }
   stop(): void { this._disconnect(); }
@@ -112,7 +125,13 @@ function setup(rectangles = 1) {
   return { viewer, base, order };
 }
 
-beforeEach(() => { request.mockReset(); pointer.mockReset(); extendedPointer.mockReset(); });
+beforeEach(() => {
+  request.mockReset();
+  pointer.mockReset();
+  extendedPointer.mockReset();
+  clientToElement.mockClear();
+  MockRFB._convertButtonMask.mockClear();
+});
 
 describe('framebuffer request pipeline', () => {
   it('requests before decoding and does not request again at completion', () => {
@@ -672,5 +691,135 @@ describe('Apple scaled pointer coordinates', () => {
     viewer.pointer(10, 20);
     expect(pointer).not.toHaveBeenCalled();
     expect(extendedPointer).not.toHaveBeenCalled();
+  });
+});
+
+describe('wheel distance', () => {
+  function event(deltaY: number, options: WheelEventInit = {}): WheelEvent {
+    return {
+      clientX: 125, clientY: 75, buttons: 0, deltaX: 0, deltaY, deltaMode: 0,
+      ...options, preventDefault: vi.fn(), stopPropagation: vi.fn(),
+    } as unknown as WheelEvent;
+  }
+
+  function masks(base: Base): number[] {
+    return base.sendMouse.mock.calls.map((call) => call[2]);
+  }
+
+  it('sends all six steps from a 300 pixel event and consumes the local scroll', () => {
+    const { viewer, base } = setup();
+    const input = event(300);
+    viewer.wheel(input);
+    expect(masks(base)).toEqual([16, 0, 16, 0, 16, 0, 16, 0, 16, 0, 16, 0]);
+    expect(base.sendMouse.mock.calls.every(([x, y]) => x === 125 && y === 75)).toBe(true);
+    expect(clientToElement).toHaveBeenCalledExactlyOnceWith(125, 75, base._canvas);
+    expect(input.preventDefault).toHaveBeenCalledOnce();
+    expect(input.stopPropagation).toHaveBeenCalledOnce();
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+  });
+
+  it('retains the remainder across five 120 pixel events for twelve steps', () => {
+    const { viewer, base } = setup();
+    viewer.wheel(event(120));
+    expect(base._accumulatedWheelDeltaY).toBe(20);
+    viewer.wheel(event(120));
+    expect(base._accumulatedWheelDeltaY).toBe(40);
+    for (let index = 0; index < 3; index++) viewer.wheel(event(120));
+    expect(masks(base)).toEqual(Array.from({ length: 12 }, () => [16, 0]).flat());
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+  });
+
+  it('accumulates small touchpad events without creating extra steps', () => {
+    const { viewer, base } = setup();
+    for (let index = 0; index < 9; index++) viewer.wheel(event(5));
+    expect(base.sendMouse).not.toHaveBeenCalled();
+    viewer.wheel(event(5));
+    expect(masks(base)).toEqual([16, 0]);
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+  });
+
+  it.each([
+    { x: 150, y: -100, expected: [64, 0, 64, 0, 64, 0, 8, 0, 8, 0] },
+    { x: -100, y: 150, expected: [32, 0, 32, 0, 16, 0, 16, 0, 16, 0] },
+  ])('keeps horizontal and vertical directions distinct: $x, $y', ({ x, y, expected }) => {
+    const { viewer, base } = setup();
+    viewer.wheel(event(y, { deltaX: x }));
+    expect(masks(base)).toEqual(expected);
+    expect(base._accumulatedWheelDeltaX).toBe(0);
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+  });
+
+  it('preserves a signed remainder when the scroll direction reverses', () => {
+    const { viewer, base } = setup();
+    viewer.wheel(event(-120));
+    expect(masks(base)).toEqual([8, 0, 8, 0]);
+    expect(base._accumulatedWheelDeltaY).toBe(-20);
+    viewer.wheel(event(10));
+    expect(base.sendMouse).toHaveBeenCalledTimes(4);
+    expect(base._accumulatedWheelDeltaY).toBe(-10);
+    viewer.wheel(event(-40));
+    expect(masks(base)).toEqual([8, 0, 8, 0, 8, 0]);
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+  });
+
+  it('converts line units with the existing nineteen pixel line height', () => {
+    const { viewer, base } = setup();
+    viewer.wheel(event(9, { deltaMode: 1 }));
+    expect(masks(base)).toEqual([16, 0, 16, 0, 16, 0]);
+    expect(base._accumulatedWheelDeltaY).toBe(21);
+  });
+
+  it('converts page units using each visible viewport dimension', () => {
+    const { viewer, base } = setup();
+    // The framebuffer is 4K, while the visible viewport is 800 x 600.
+    viewer.wheel(event(1, { deltaX: 1, deltaMode: 2 }));
+    expect(masks(base).filter((mask) => mask === 64)).toHaveLength(16);
+    expect(masks(base).filter((mask) => mask === 16)).toHaveLength(12);
+    expect(masks(base).filter((mask) => mask === 0)).toHaveLength(28);
+    expect(base._accumulatedWheelDeltaX).toBe(0);
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+  });
+
+  it('keeps held mouse buttons in both the wheel press and release', () => {
+    const { viewer, base } = setup();
+    viewer.wheel(event(100, { buttons: 3 })); // DOM left + right becomes RFB mask 5.
+    expect(MockRFB._convertButtonMask).toHaveBeenCalledExactlyOnceWith(3);
+    expect(masks(base)).toEqual([21, 5, 21, 5]);
+    expect(base._mouseButtonMask).toBe(5);
+  });
+
+  it('keeps wheel counts unchanged in half-size transmission and maps the target coordinates', () => {
+    const { viewer, base } = appleSetup();
+    viewer.setTransmissionScale('half');
+    resizeFrame(viewer, base, 1920, 1080);
+    viewer.wheel(event(300));
+    expect(pointer).toHaveBeenCalledTimes(12);
+    expect(pointer.mock.calls.map((call) => call[3])).toEqual([16, 0, 16, 0, 16, 0, 16, 0, 16, 0, 16, 0]);
+    expect(pointer.mock.calls.every(([, x, y]) => x === 250 && y === 150)).toBe(true);
+    expect(base.sendMouse).not.toHaveBeenCalled();
+  });
+
+  it.each(['view-only', 'disconnected'])('drops events and residual movement while %s', (state) => {
+    const { viewer, base } = setup();
+    viewer.wheel(event(30, { deltaX: -20 }));
+    base._viewOnly = state === 'view-only';
+    base._rfbConnectionState = state === 'disconnected' ? 'disconnected' : 'connected';
+    viewer.wheel(event(300, { deltaX: 100 }));
+    expect(base.sendMouse).not.toHaveBeenCalled();
+    expect(base._accumulatedWheelDeltaX).toBe(0);
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+    base._viewOnly = false;
+    base._rfbConnectionState = 'connected';
+    viewer.wheel(event(20));
+    expect(base.sendMouse).not.toHaveBeenCalled();
+  });
+
+  it('clears both accumulated axes when disconnecting', () => {
+    const { viewer, base } = setup();
+    viewer.wheel(event(40, { deltaX: -30 }));
+    viewer.stop();
+    expect(base._accumulatedWheelDeltaX).toBe(0);
+    expect(base._accumulatedWheelDeltaY).toBe(0);
+    expect(base.sendMouse).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  Windows 11 x64 · v0.1.6 · 早期版本
+  Windows 11 x64 · v0.1.7 · 早期版本
 </p>
 
 <p align="center">
@@ -44,9 +44,9 @@ MacLink 是面向 Windows 的 VNC 客户端，适合在局域网中使用 Mac。
 
 ### 2. 运行 Windows 客户端
 
-推荐运行 `MacLink-0.1.6-Setup.exe`，安装到当前用户目录，并创建桌面与开始菜单快捷方式。卸载入口在 Windows“设置 → 应用 → 安装的应用”中。
+推荐运行 `MacLink-0.1.7-Setup.exe`，安装到当前用户目录，并创建桌面与开始菜单快捷方式。卸载入口在 Windows“设置 → 应用 → 安装的应用”中。
 
-也可解压便携版 `MacLink-win32-x64-0.1.6.zip`，运行其中的 `MacLink.exe`。请保留解压目录中的其他文件。
+也可解压便携版 `MacLink-win32-x64-0.1.7.zip`，运行其中的 `MacLink.exe`。请保留解压目录中的其他文件。
 
 当前安装包未做代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。尚未配置公共下载渠道，从源码生成安装包与 ZIP 的方式见 [开发](#开发)。安装位置、更新和卸载说明见 [安装指南](docs/INSTALLATION.md)。
 
@@ -93,6 +93,7 @@ MacLink 是面向 Windows 的 VNC 客户端，适合在局域网中使用 Mac。
 - 失焦、切换到本地控件或断开时释放远端按键，避免修饰键卡住。
 - 保留 noVNC 的物理按键映射，不额外把 `Ctrl` 改为 `Command`；也可使用工具栏中的 Mac 组合键。
 - 光标跟随远端提供的形状变化；远端暂未提供有效形状时使用点状提示。
+- 滚轮按累计滚动量发送步进并保留余量，避免快速滚动被合并后丢量；半尺寸传输不改变滚动步数。
 
 窗口模式下，部分系统组合键仍可能被 Windows 截获。全屏捕获也受操作系统限制，`Ctrl+Alt+Delete` 等安全组合键不会被接管。参见 [Keyboard Lock 说明](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)。
 
@@ -115,7 +116,7 @@ MacLink 是面向 Windows 的 VNC 客户端，适合在局域网中使用 Mac。
 | Windows | Windows 11 x64；鼠标坐标自动化覆盖 100% / 150% DPI |
 | Mac | macOS Sequoia 15.8.2，内置屏幕共享、Apple 账户认证 |
 | 半尺寸传输 | 上述实机已验证 4K → 1080p；仅对 `RFB 003.889` Apple 服务启用 |
-| 自动化 | 0.1.6 已完成 TypeScript 检查、178 项 Vitest 检查和 14 项 Electron E2E 流程 |
+| 自动化 | 0.1.7 已完成 TypeScript 检查、191 项 Vitest 检查和 15 项 Electron E2E 流程 |
 
 其他 macOS 版本尚未实测。模拟 RFB 服务的测试结果不代表所有真实服务器均兼容，完整记录见 [验收文档](docs/VALIDATION.md)。
 

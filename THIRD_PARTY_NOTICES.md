@@ -7,7 +7,8 @@ Its license notices, author list and additional component licenses are distribut
 No noVNC source files are modified by this project.
 MacLink subclasses the ZRLE decoder, substitutes its inflater at build time,
 and subclasses RFB to schedule the next framebuffer request earlier and
-shorten the mouse movement interval while a regular mouse button is held.
+shorten the mouse movement interval while a regular mouse button is held,
+and preserve accumulated wheel distance across coalesced input events.
 The adapter depends on the internal interfaces of the pinned noVNC version.
 
 ZRLE decompression uses zlib-streams 1.4.0 (BSD 3-Clause), including zlib and
