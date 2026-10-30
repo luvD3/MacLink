@@ -788,15 +788,111 @@ describe('wheel distance', () => {
     expect(base._mouseButtonMask).toBe(5);
   });
 
-  it('keeps wheel counts unchanged in half-size transmission and maps the target coordinates', () => {
+  it('sends the Apple scroll wire vector with exact point distances and no invented gesture', () => {
     const { viewer, base } = appleSetup();
+    const input = event(-25, { deltaX: 40, buttons: 2 });
+    viewer.wheel(input);
+    // Independent protocol vector: horizontal -40 points, vertical +25 points,
+    // line deltas -4/+2, 16.16 deltas -4/+2.5, and native position (125, 75).
+    const expected = Buffer.from([
+      '170000360001000b',
+      'fffc00020000',
+      'fffc00000002800000000000',
+      'ffffffd80000001900000000',
+      '00000000000000000000000000000002',
+      '007d004b',
+    ].join(''), 'hex');
+    expect(base._sock.writes.map(bytes => Buffer.from(bytes))).toEqual([expected]);
+    expect(masks(base)).toEqual([4]); // Preserve the held right button, without wheel bits.
+    expect(base._mouseButtonMask).toBe(4);
+    expect(input.preventDefault).toHaveBeenCalledOnce();
+    expect(input.stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it('preserves fast and coalesced Apple scroll distance without adding acceleration', () => {
+    const { viewer, base } = appleSetup();
+    for (let index = 0; index < 5; index++) viewer.wheel(event(120, { deltaX: -20 }));
+    viewer.wheel(event(-600, { deltaX: 100 }));
+    const points = base._sock.writes.map(bytes => {
+      const data = new DataView(bytes.buffer);
+      return [data.getInt32(26), data.getInt32(30)];
+    });
+    expect(points).toEqual([[20, -120], [20, -120], [20, -120], [20, -120], [20, -120], [-100, 600]]);
+    expect(masks(base)).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it('retains fractional Apple point distances across small events and direction changes', () => {
+    const { viewer, base } = appleSetup();
+    for (let index = 0; index < 3; index++) viewer.wheel(event(.25, { deltaX: -.25 }));
+    expect(base._sock.writes).toEqual([]);
+    expect(base.sendMouse).not.toHaveBeenCalled();
+    viewer.wheel(event(.25, { deltaX: -.25 }));
+    viewer.wheel(event(-.75, { deltaX: .75 }));
+    viewer.wheel(event(.25, { deltaX: -.25 }));
+    expect(base._sock.writes).toHaveLength(1);
+    viewer.wheel(event(-.5, { deltaX: .5 }));
+    const points = base._sock.writes.map(bytes => {
+      const data = new DataView(bytes.buffer);
+      return [data.getInt32(26), data.getInt32(30)];
+    });
+    expect(points).toEqual([[1, -1], [-1, 1]]);
+  });
+
+  it('maps Apple scroll coordinates through the viewport and half transmission without changing distance', () => {
+    const { viewer, base } = appleSetup();
+    base._display.absX.mockImplementation(x => x * 3 + 17);
+    base._display.absY.mockImplementation(y => y * 2 + 23);
+    viewer.wheel(event(300));
+    const original = base._sock.writes[0];
     viewer.setTransmissionScale('half');
     resizeFrame(viewer, base, 1920, 1080);
+    // Local fit/viewport transforms now resolve to half the transmitted
+    // coordinates. Both events must still hit the same original Mac position.
+    base._display.absX.mockImplementation(x => (x * 3 + 17) / 2);
+    base._display.absY.mockImplementation(y => (y * 2 + 23) / 2);
     viewer.wheel(event(300));
-    expect(pointer).toHaveBeenCalledTimes(12);
-    expect(pointer.mock.calls.map((call) => call[3])).toEqual([16, 0, 16, 0, 16, 0, 16, 0, 16, 0, 16, 0]);
-    expect(pointer.mock.calls.every(([, x, y]) => x === 250 && y === 150)).toBe(true);
+    expect(base._sock.writes.at(-1)).toEqual(original);
+    const data = new DataView(original.buffer);
+    expect([data.getInt32(26), data.getInt32(30)]).toEqual([0, -300]);
+    expect([data.getUint16(54), data.getUint16(56)]).toEqual([392, 173]);
+    expect(pointer).toHaveBeenCalledExactlyOnceWith(base._sock, 392, 173, 0);
+  });
+
+  it.each(['view-only', 'disconnected'])('drops Apple scroll events and fractions while %s', (state) => {
+    const { viewer, base } = appleSetup();
+    viewer.wheel(event(.75, { deltaX: -.75 }));
+    base._viewOnly = state === 'view-only';
+    base._rfbConnectionState = state === 'disconnected' ? 'disconnected' : 'connected';
+    viewer.wheel(event(300, { deltaX: -100 }));
+    base._viewOnly = false;
+    base._rfbConnectionState = 'connected';
+    viewer.wheel(event(.25, { deltaX: -.25 }));
+    expect(base._sock.writes).toEqual([]);
     expect(base.sendMouse).not.toHaveBeenCalled();
+    viewer.wheel(event(.75, { deltaX: -.75 }));
+    expect(base._sock.writes).toHaveLength(1);
+    const data = new DataView(base._sock.writes[0].buffer);
+    expect([data.getInt32(26), data.getInt32(30)]).toEqual([1, -1]);
+  });
+
+  it('clears Apple point fractions on disconnect even without another wheel event', () => {
+    const { viewer, base } = appleSetup();
+    viewer.wheel(event(.75, { deltaX: -.75 }));
+    viewer.stop();
+    base._rfbConnectionState = 'connected';
+    viewer.wheel(event(.25, { deltaX: -.25 }));
+    expect(base._sock.writes).toEqual([]);
+    expect(base.sendMouse).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { mode: 1, delta: 9, steps: 3 },
+    { mode: 2, delta: 1, steps: 12 },
+  ])('retains the discrete fallback for non-pixel Apple events with mode $mode', ({ mode, delta, steps }) => {
+    const { viewer, base } = appleSetup();
+    viewer.wheel(event(delta, { deltaMode: mode }));
+    expect(base._sock.writes).toEqual([]);
+    expect(masks(base)).toEqual(Array.from({ length: steps }, () => [16, 0]).flat());
   });
 
   it.each(['view-only', 'disconnected'])('drops events and residual movement while %s', (state) => {

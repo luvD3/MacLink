@@ -1,7 +1,7 @@
 {
   "name": "maclink-viewer",
   "productName": "MacLink",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "type": "module",
   "description": "A Windows VNC viewer for macOS Screen Sharing",

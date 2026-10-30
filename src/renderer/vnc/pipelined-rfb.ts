@@ -8,6 +8,30 @@ const WHEEL_LINE_HEIGHT = 19;
 type FramebufferSize = Readonly<{ width: number; height: number }>;
 type Bounds = { left: number; top: number; right: number; bottom: number };
 
+// AppleScroll wire layout adapted from Screon (MIT), revision 08e60a7c.
+// See third-party/Screon/LICENSE and docs/DECODER.md for provenance.
+function appleScroll(deltaX: number, deltaY: number, x: number, y: number): Uint8Array {
+  const bytes = new Uint8Array(58);
+  const data = new DataView(bytes.buffer);
+  bytes[0] = 0x17;
+  data.setUint16(2, 54);
+  data.setUint16(4, 1);
+  data.setUint16(6, 11);
+  for (const [axis, delta] of [deltaX, deltaY].entries()) {
+    // Apple's parallel line fields use ten points per line. The point delta
+    // itself is unchanged; this is a unit conversion, not a speed multiplier.
+    data.setInt16(8 + axis * 2, Math.max(-32768, Math.min(32767, Math.trunc(delta / 10))));
+    data.setInt32(14 + axis * 4, Math.max(-2147483648, Math.min(2147483647, Math.trunc(delta * 65536 / 10))));
+    data.setInt32(26 + axis * 4, delta);
+  }
+  // Continuous point scrolling. DOM events do not expose Apple's phase or
+  // momentum fields: leave them zero instead of inventing gestures/inertia.
+  data.setUint32(50, 2);
+  data.setUint16(54, x);
+  data.setUint16(56, y);
+  return bytes;
+}
+
 // Used only while replacing a resized framebuffer. Subtracting covered bounds
 // prevents overlapping rectangles from being counted twice as a complete image.
 function subtractCoveredBounds(uncovered: Bounds[], covered: Bounds): Bounds[] {
@@ -31,7 +55,9 @@ export default class PipelinedRFB extends UpstreamRFB {
   private pipelineEnabled = true;
   private earlyRequest: { width: number; height: number } | undefined;
   private readingFramebufferUpdate = false;
-  private appleScaling = false;
+  private appleServer = false;
+  private scrollRemainderX = 0;
+  private scrollRemainderY = 0;
   private originalFramebufferSize: FramebufferSize | undefined;
   private queuedScale: TransmissionScale | undefined;
   private awaitingScale: TransmissionScale | undefined;
@@ -41,14 +67,14 @@ export default class PipelinedRFB extends UpstreamRFB {
   private fullRefreshInFlight = false;
   private refreshUncovered: Bounds[] = [];
 
-  override get supportsTransmissionScale(): boolean { return this.appleScaling; }
+  override get supportsTransmissionScale(): boolean { return this.appleServer; }
 
   override get framebufferSize(): FramebufferSize {
     return { width: this._fbWidth, height: this._fbHeight };
   }
 
   override setTransmissionScale(scale: TransmissionScale): boolean {
-    if (!this.appleScaling || this._rfbConnectionState !== 'connected') return false;
+    if (!this.appleServer || this._rfbConnectionState !== 'connected') return false;
     // The session deduplicates unchanged preferences. An explicit call here
     // must also work as a retry, or as cancellation of a pending half request.
     this.queuedScale = scale;
@@ -58,7 +84,7 @@ export default class PipelinedRFB extends UpstreamRFB {
 
   protected override _negotiateProtocolVersion(): boolean | void {
     if (!this._sock.rQwait('version', 12)) {
-      this.appleScaling = String.fromCharCode(...this._sock.rQpeekBytes(12)) === 'RFB 003.889\n';
+      this.appleServer = String.fromCharCode(...this._sock.rQpeekBytes(12)) === 'RFB 003.889\n';
     }
     // Keep upstream's 3.8 negotiation; do not enter Apple's extended handshake.
     return super._negotiateProtocolVersion();
@@ -85,6 +111,7 @@ export default class PipelinedRFB extends UpstreamRFB {
 
   protected override _disconnect(): void {
     this._accumulatedWheelDeltaX = this._accumulatedWheelDeltaY = 0;
+    this.scrollRemainderX = this.scrollRemainderY = 0;
     this.queuedScale = this.awaitingScale = undefined;
     this.transmissionScaleRequested = false;
     this.earlyRequest = undefined;
@@ -127,17 +154,21 @@ export default class PipelinedRFB extends UpstreamRFB {
     }
     if (this._rfbConnectionState !== 'connected' || this._viewOnly) return;
     if (mask & 0x8000) throw new Error('Illegal mouse button mask (mask: ' + mask + ')');
-    const original = this.originalFramebufferSize!;
-    // absX/Y already account for local fit scaling and the scrolled viewport.
-    const remoteX = Math.max(0, Math.min(original.width - 1,
-      Math.floor(this._display.absX(x) * original.width / this._fbWidth)));
-    const remoteY = Math.max(0, Math.min(original.height - 1,
-      Math.floor(this._display.absY(y) * original.height / this._fbHeight)));
+    const { x: remoteX, y: remoteY } = this.remotePointerPosition(x, y);
     if (this._extendedPointerEventSupported && (mask & 0x7f80)) {
       UpstreamRFB.messages.extendedPointerEvent(this._sock, remoteX, remoteY, mask);
     } else {
       UpstreamRFB.messages.pointerEvent(this._sock, remoteX, remoteY, mask);
     }
+  }
+
+  private remotePointerPosition(x: number, y: number): { x: number; y: number } {
+    const size = this.halfSizeCoordinates ? this.originalFramebufferSize! : this.framebufferSize;
+    // absX/Y already account for local fit scaling and the scrolled viewport.
+    return {
+      x: Math.max(0, Math.min(size.width - 1, Math.floor(this._display.absX(x) * size.width / this._fbWidth))),
+      y: Math.max(0, Math.min(size.height - 1, Math.floor(this._display.absY(y) * size.height / this._fbHeight))),
+    };
   }
 
   protected override _handleMouseMove(x: number, y: number): void {
@@ -162,6 +193,7 @@ export default class PipelinedRFB extends UpstreamRFB {
   protected override _handleWheel(event: WheelEvent): void {
     if (this._rfbConnectionState !== 'connected' || this._viewOnly) {
       this._accumulatedWheelDeltaX = this._accumulatedWheelDeltaY = 0;
+      this.scrollRemainderX = this.scrollRemainderY = 0;
       return;
     }
     event.preventDefault();
@@ -169,6 +201,23 @@ export default class PipelinedRFB extends UpstreamRFB {
     const position = clientToElement(event.clientX, event.clientY, this._canvas);
     const buttons = UpstreamRFB._convertButtonMask(event.buttons);
     const mode = event.deltaMode;
+    if (this.appleServer && mode === 0) {
+      // Chromium supplies Windows wheel/precision-touchpad movement in CSS
+      // pixels. Forward that distance as Mac points, without gain or timing
+      // rules. Apple and DOM use opposite signs for both scroll axes.
+      this.scrollRemainderX -= event.deltaX;
+      this.scrollRemainderY -= event.deltaY;
+      const deltaX = Math.trunc(this.scrollRemainderX), deltaY = Math.trunc(this.scrollRemainderY);
+      this.scrollRemainderX -= deltaX;
+      this.scrollRemainderY -= deltaY;
+      if (deltaX === 0 && deltaY === 0) return;
+      // Flush a pending move and preserve held buttons, without wheel bits.
+      this._handleMouseButton(position.x, position.y, buttons);
+      const remote = this.remotePointerPosition(position.x, position.y);
+      this._sock.sQpushBytes(appleScroll(deltaX, deltaY, remote.x, remote.y));
+      this._sock.flush();
+      return;
+    }
     const unitX = mode === 2 ? this._screen.clientWidth : mode === 1 ? WHEEL_LINE_HEIGHT : 1;
     const unitY = mode === 2 ? this._screen.clientHeight : mode === 1 ? WHEEL_LINE_HEIGHT : 1;
 

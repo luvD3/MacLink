@@ -1,10 +1,10 @@
 # Windows 安装与分发
 
-MacLink 0.1.7 提供 Windows 11 x64 安装包与 ZIP 便携版。两种形式都包含 Electron 运行时，使用者无须安装 Node.js。
+MacLink 0.1.8 提供 Windows 11 x64 安装包与 ZIP 便携版。两种形式都包含 Electron 运行时，使用者无须安装 Node.js。
 
 ## 安装版
 
-运行 `MacLink-0.1.7-Setup.exe`。安装器使用 [Squirrel.Windows](https://www.electronforge.io/config/makers/squirrel.windows)，默认安装到当前用户的 `%LOCALAPPDATA%/MacLink/`，创建桌面和开始菜单快捷方式，完成后启动应用。
+运行 `MacLink-0.1.8-Setup.exe`。安装器使用 [Squirrel.Windows](https://www.electronforge.io/config/makers/squirrel.windows)，默认安装到当前用户的 `%LOCALAPPDATA%/MacLink/`，创建桌面和开始菜单快捷方式，完成后启动应用。
 
 从 Windows“设置 → 应用 → 安装的应用”中选择 MacLink 可卸载程序和快捷方式。安装器不提供自选目录；需要自选位置时使用 ZIP 版。
 
@@ -12,7 +12,7 @@ MacLink 0.1.7 提供 Windows 11 x64 安装包与 ZIP 便携版。两种形式都
 
 ## 便携版
 
-完整解压 `MacLink-win32-x64-0.1.7.zip` 到自选目录，运行 `MacLink.exe`。不要只移动其中的 exe，它依赖同目录的运行时和资源。
+完整解压 `MacLink-win32-x64-0.1.8.zip` 到自选目录，运行 `MacLink.exe`。不要只移动其中的 exe，它依赖同目录的运行时和资源。
 
 便携版不会注册卸载项或自动创建快捷方式；退出后可移除解压目录。这里的“便携”指免安装，配置仍保存在用户数据目录。
 
@@ -35,9 +35,9 @@ npm run make -- --from-package
 
 | 输出 | 位置 |
 | --- | --- |
-| 安装器 | `out/make/squirrel.windows/x64/MacLink-0.1.7-Setup.exe` |
-| Squirrel 包与元数据 | 同目录的 `MacLink-0.1.7-full.nupkg`、`RELEASES` |
-| ZIP | `out/make/zip/win32/x64/MacLink-win32-x64-0.1.7.zip` |
+| 安装器 | `out/make/squirrel.windows/x64/MacLink-0.1.8-Setup.exe` |
+| Squirrel 包与元数据 | 同目录的 `MacLink-0.1.8-full.nupkg`、`RELEASES` |
+| ZIP | `out/make/zip/win32/x64/MacLink-win32-x64-0.1.8.zip` |
 
 给用户分发 Setup.exe 即可，安装时不需要额外下载 nupkg。所有构建输出均被 Git 忽略。
 
@@ -50,6 +50,21 @@ npm run make -- --from-package
 `src/main/installer.ts` 在单实例锁和窗口创建前处理 Squirrel 事件：安装与升级创建快捷方式，卸载删除快捷方式，旧版本退出，首次正常运行继续打开客户端。进程等待快捷方式命令结束后退出，不打开连接窗口或读取连接配置。
 
 安装包 ID、exe 和任务栏标识固定为 `MacLink`、`MacLink.exe`、`com.squirrel.MacLink.MacLink`，后续升级应保持一致。
+
+## 0.1.8 验证
+
+TypeScript、199 项 Vitest 与完整一轮 16 项打包 Electron E2E 全部通过。
+Apple 精细滚动已得到用户实机“滚动正常”的反馈；测量范围见 [验收记录](VALIDATION.md#018-apple-原生精细滚动)。
+
+ZIP 与 nupkg 的 85 个应用文件逐一核对 SHA-256，与已测试的打包目录一致；
+Setup 内嵌 nupkg 与独立 nupkg 一致，RELEASES 文件名、长度和 SHA-1 正确。
+Screon、Chromium 与其他第三方许可齐全，未包含本机连接配置、日志或诊断文件。
+此次未执行安装器；产物审核不替代安装、更新和卸载验收。
+
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `MacLink-0.1.8-Setup.exe` | 155,913,216 | `707ae656d6fd24f16726d7e254b41f56d84c0fbf2e9fbe197f7c2f6f775231c1` |
+| `MacLink-win32-x64-0.1.8.zip` | 158,348,972 | `f3754a5a16e8e2984bb939b36ec945b932079663f8594ce8367fd626b5ecdef3` |
 
 ## 0.1.7 验证
 

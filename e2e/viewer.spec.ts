@@ -441,7 +441,7 @@ for (const dpi of [1, 1.5]) {
   });
 }
 
-test('wheel distance survives coalescing and half-size transmission at 150% DPI', async () => {
+test('Apple scroll preserves native distances and 4K coordinates at 150% DPI', async () => {
   const server = await startVncServer({ width: 3840, height: 2160, appleScaling: true, clipboardText: null });
   servers.push(server);
   await launch(['--force-device-scale-factor=1.5']);
@@ -452,8 +452,9 @@ test('wheel distance survives coalescing and half-size transmission at 150% DPI'
   const canvas = page.getByTestId('remote-screen').locator('canvas');
   await expect(canvas).toHaveAttribute('width', '3840');
 
-  const wheelBatch = async (deltas: number[][], masks: number[], actual = false, heldButtons = 0) => {
-    const before = server.pointers.length;
+  const wheelBatch = async (deltas: number[][], expectedPoints: number[][], actual = false, heldButtons = 0) => {
+    const before = server.appleScrolls.length;
+    const beforePointers = server.pointers.length;
     const point = await canvas.evaluate((element, { deltas, actual, heldButtons }) => {
       const target = element as HTMLCanvasElement, screen = target.parentElement!;
       if (actual) {
@@ -468,19 +469,27 @@ test('wheel distance survives coalescing and half-size transmission at 150% DPI'
       return { hitCanvas: document.elementFromPoint(clientX, clientY) === target, tolerance: Math.ceil(3840 / bounds.width) + 1 };
     }, { deltas, actual, heldButtons });
     expect(point.hitCanvas).toBe(true);
-    await expect.poll(() => server.pointers.slice(before).map(event => event.buttons)).toEqual(masks);
-    for (const event of server.pointers.slice(before)) {
+    await expect.poll(() => server.appleScrolls.slice(before).map(event => event.points)).toEqual(expectedPoints);
+    for (const event of server.appleScrolls.slice(before)) {
       expect(Math.abs(event.x - 3840 * .73)).toBeLessThanOrEqual(point.tolerance);
       expect(Math.abs(event.y - 2160 * .62)).toBeLessThanOrEqual(point.tolerance);
+      expect(event).toMatchObject({ phase: 0, momentum: 0, count: 0, flags: 2 });
     }
+    expect(server.pointers.slice(beforePointers).some(event => event.buttons & 120)).toBe(false);
+    if (heldButtons) expect(server.pointers.slice(beforePointers).at(-1)?.buttons).toBe(4);
   };
-  const pairs = (button: number, count: number, held = 0) => Array.from({ length: count }, () => [button | held, held]).flat();
 
-  await wheelBatch([[0, 300]], pairs(16, 6));
-  await wheelBatch(Array.from({ length: 5 }, () => [0, -120]), pairs(8, 12));
-  await wheelBatch(Array.from({ length: 10 }, () => [0, 5]), pairs(16, 1));
-  await wheelBatch([[-100, 150]], [...pairs(32, 2), ...pairs(16, 3)]);
-  await wheelBatch([[0, 100]], pairs(16, 2, 4), false, 2); // DOM right button maps to RFB mask 4.
+  await wheelBatch([[0, 300]], [[0, -300, 0]]);
+  expect(server.appleScrolls.at(-1)).toMatchObject({ lines: [0, -30, 0], fixed: [0, -1966080, 0] });
+  await canvas.hover();
+  const beforeBrowserWheel = server.appleScrolls.length;
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() => server.appleScrolls.slice(beforeBrowserWheel).map(event => event.points)).toEqual([[0, -120, 0]]);
+  await wheelBatch(Array.from({ length: 5 }, () => [0, -120]), Array.from({ length: 5 }, () => [0, 120, 0]));
+  await wheelBatch(Array.from({ length: 10 }, () => [0, 5]), Array.from({ length: 10 }, () => [0, -5, 0]));
+  await wheelBatch(Array.from({ length: 4 }, () => [0, .25]), [[0, -1, 0]]);
+  await wheelBatch([[-100, 150]], [[100, -150, 0]]);
+  await wheelBatch([[0, 100]], [[0, -100, 0]], false, 2); // DOM right button maps to RFB mask 4.
   await canvas.dispatchEvent('mouseup', { button: 2, buttons: 0 });
   await expect.poll(() => server.pointers.at(-1)?.buttons).toBe(0);
 
@@ -489,20 +498,52 @@ test('wheel distance survives coalescing and half-size transmission at 150% DPI'
   await page.getByTestId('transmission-scale').selectOption('half');
   await expect(canvas).toHaveAttribute('width', '1920');
   await expect(page.getByTestId('transmission-status')).toHaveText('1920 × 1080');
-  await wheelBatch([[0, 300]], pairs(16, 6));
+  await wheelBatch([[0, 300]], [[0, -300, 0]]);
   await revealControls();
   await page.getByTestId('scale-actual').click();
   await expect.poll(() => canvas.evaluate(element => Math.round(element.getBoundingClientRect().width))).toBe(1920);
-  await wheelBatch([[0, -300]], pairs(8, 6), true);
+  await wheelBatch([[0, -300]], [[0, 300, 0]], true);
 
   await revealControls();
   await page.locator('.toolbar-view-only input').check();
-  const beforeViewOnly = server.pointers.filter(event => event.buttons & 120).length;
+  const beforeViewOnly = server.appleScrolls.length;
   await canvas.dispatchEvent('wheel', { deltaY: 300, bubbles: true, cancelable: true });
   await page.locator('.toolbar-view-only input').uncheck();
   // Wait for a subsequent wheel command over the same ordered TCP connection.
-  await wheelBatch([[0, 50]], pairs(16, 1), true);
-  expect(server.pointers.filter(event => event.buttons & 120).length - beforeViewOnly).toBe(1);
+  await wheelBatch([[0, 50]], [[0, -50, 0]], true);
+  expect(server.appleScrolls.length - beforeViewOnly).toBe(1);
+  expect(server.pointers.some(event => event.buttons & 120)).toBe(false);
+  expect(server.versions).toEqual(['RFB 003.008\n']);
+  expect([server.nativeWidth, server.nativeHeight]).toEqual([3840, 2160]);
+});
+
+test('standard VNC keeps accumulated wheel distance without Apple messages', async () => {
+  const server = await startVncServer({ clipboardText: null });
+  servers.push(server);
+  await launch();
+  await pauseClipboardBeforeConnecting();
+  await addConnection(server.port);
+  await page.getByTestId('connect').click();
+  await expect(page.locator('[data-session-state]')).toHaveAttribute('data-session-state', 'connected');
+  const canvas = page.getByTestId('remote-screen').locator('canvas');
+  await expect(canvas).toHaveAttribute('width', '1920');
+  const wheelBatch = async (deltas: number[][], masks: number[]) => {
+    const before = server.pointers.length;
+    await canvas.evaluate((target, deltas) => {
+      const bounds = target.getBoundingClientRect();
+      for (const [deltaX, deltaY] of deltas) target.dispatchEvent(new WheelEvent('wheel', {
+        clientX: bounds.x + bounds.width / 2, clientY: bounds.y + bounds.height / 2,
+        deltaX, deltaY, bubbles: true, cancelable: true,
+      }));
+    }, deltas);
+    await expect.poll(() => server.pointers.slice(before).map(event => event.buttons)).toEqual(masks);
+  };
+  const pairs = (button: number, count: number) => Array.from({ length: count }, () => [button, 0]).flat();
+  await wheelBatch([[0, 300]], pairs(16, 6));
+  await wheelBatch(Array.from({ length: 5 }, () => [0, -120]), pairs(8, 12));
+  await wheelBatch(Array.from({ length: 10 }, () => [0, 5]), pairs(16, 1));
+  await wheelBatch([[-100, 150]], [...pairs(32, 2), ...pairs(16, 3)]);
+  expect(server.appleScrolls).toEqual([]);
 });
 
 test('pending drag sends the final scaled position before release and is cancelled on disconnect', async () => {

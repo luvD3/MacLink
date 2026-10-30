@@ -95,13 +95,40 @@ Continuous Updates 已启用、显示队列有背压、连接未就绪或等待�
 每个 DOM 事件、每轴最多发送一步，达到 50 px 阈值后直接清零，较大 delta 和余数会丢失。
 本地复现：300 px 仅发送 1 步，5 次 120 px 仅发送 5 步。
 
-现在按 50 px 消费所有完整步进并保留有符号余数：上述两组分别发送 6 步和 12 步，
+0.1.7 改为按 50 px 消费所有完整步进并保留有符号余数：上述两组分别发送 6 步和 12 步，
 10 次 5 px 仍只发送 1 步。LINE 保留每行 19 px 的既有换算，PAGE 按可见视口宽高换算。
 通过上游坐标辅助函数和 `_handleMouseButton` 保留按钮状态、待发移动刷新及半尺寸坐标转换，
 不添加滚动定时器或速度设置，不随 4K／1080p 传输尺寸改变滚动步数。
 
 自动化检查的是送达 RFB 服务端的按下／释放步数和目标坐标。远端页面的实际移动距离由 Mac 和应用处理，
 这项修复不代表画面延迟降低，也不是实机滚动速度倍数的测量。
+
+### Apple 原生滚动距离（0.1.8）
+
+0.1.7 实机反馈仍然滚动缓慢。标准 RFB 只传递滚轮按钮的按下／释放，不能表达精确距离。
+0.1.8 对 `RFB 003.889` 的 Apple 服务采用原生 ScrollWheel 事件 `0x17`、version 1、subtype 11，
+复用 [Screon 的 AppleScroll 消息实现](https://github.com/ledhcg/screon/blob/08e60a7c07cc914e75e0e2fb8eaee5facdf08a15/Sources/RFBKit/Protocol/AppleInputEvent.swift)，
+按 MIT 许可移植其消息构造，许可随程序分发。协议布局另与
+[zDesk 的独立实现记录](https://github.com/andrewtheguy/zdesk/blob/e5158a7ab4afa82afb2cdb9870ceadc6ccd8c595/docs/apple-vnc-889.md#a-mac-scrolls-by-a-distance)核对。
+
+消息共 58 字节，长度字段为 54；三组水平／垂直／第三轴字段分别为 I16 行距离、I32 16.16 行距离和 I32 point 距离。
+Chromium 提供的 `DOM_DELTA_PIXEL` 直接转为 point 距离，只转换方向并累计不足一个 point 的小数；
+同步填写原生协议的 line／fixed 字段（每行 10 point），continuous flag 为 2。
+例如 DOM `deltaY=300` 发送 `pointY=-300`，不会变成六次滚轮按钮按下。
+不加入速度倍率、加速曲线、重采样定时器或人工惯性；DOM 不提供 Apple 的 phase／momentum，相关字段为零。
+Windows 与 Mac 的物理输入驱动并不相同，因此不能据此承诺与直接接在 Mac 上的鼠标完全一致。
+
+目标位置继续映射回 Mac 原始坐标；传输尺寸、显示缩放和 Windows DPI 不改变滚动距离。
+发送前沿用 noVNC 的移动刷新和按钮保持，避免待发移动在滚动后将指针带回旧位置；不再附加滚轮按钮事件。
+普通 VNC 服务、非 pixel 的输入保留 0.1.7 步进路径，不猜测缺失的像素距离。
+只读及断开时清除小数余量。
+
+仍使用 noVNC 的普通 3.8 握手，不引入扩展认证。
+[Screon 的协议记录 §4h](https://github.com/ledhcg/screon/blob/08e60a7c07cc914e75e0e2fb8eaee5facdf08a15/docs/protocol-notes.md)
+有这一握手下的实机验证，但属于外部作者的测试。当前普通握手没有 Apple 扩展能力位，
+banner 识别也不等于所有 macOS 都支持。0.1.8 已在此前验证的 Mac 上登录，用户反馈滚动正常；
+本次会话初始及当前接收尺寸均为 1920×1080。半尺寸转换的坐标矩阵由自动化覆盖，
+不将本次反馈当作重新完成 4K／半尺寸切换的实机验收，也不宣称端到端延迟降低。
 
 ## 复现基准
 

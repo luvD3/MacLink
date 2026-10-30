@@ -11,6 +11,11 @@ shorten the mouse movement interval while a regular mouse button is held,
 and preserve accumulated wheel distance across coalesced input events.
 The adapter depends on the internal interfaces of the pinned noVNC version.
 
+The Apple precise-scroll message builder is adapted from Screon's AppleScroll
+implementation (MIT), Copyright (c) 2026 Screon contributors.
+Source: https://github.com/ledhcg/screon/blob/08e60a7c07cc914e75e0e2fb8eaee5facdf08a15/Sources/RFBKit/Protocol/AppleInputEvent.swift.
+Its license is distributed in `resources/third-party/Screon/LICENSE`.
+
 ZRLE decompression uses zlib-streams 1.4.0 (BSD 3-Clause), including zlib and
 its additional component notices. The unmodified source and WASM binary are
 available at https://github.com/gildas-lormeau/zlib-streams.

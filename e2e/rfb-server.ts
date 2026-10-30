@@ -58,6 +58,8 @@ export async function startVncServer(options: FakeVncOptions = {}) {
   const nativeHeight = options.height ?? 1080;
   const keys: { down: boolean; key: number }[] = [];
   const pointers: { buttons: number; x: number; y: number }[] = [];
+  const appleScrolls: { lines: number[]; fixed: number[]; points: number[];
+    phase: number; momentum: number; count: number; flags: number; x: number; y: number }[] = [];
   const clipboard: string[] = [];
   const scales: number[] = [];
   const versions: string[] = [];
@@ -226,6 +228,10 @@ export async function startVncServer(options: FakeVncOptions = {}) {
             if (pending.length < 8) return;
             length = 8 + pending.readUInt32BE(4);
           } else if (type === 8 && options.appleScaling) length = 10;
+          else if (type === 23 && options.appleScaling) {
+            if (pending.length < 4) return;
+            length = 4 + pending.readUInt16BE(2);
+          }
           else if (type === 150) length = 10;
           else throw new Error(`Unexpected client RFB message: ${type}`);
           const message = take(length);
@@ -238,6 +244,19 @@ export async function startVncServer(options: FakeVncOptions = {}) {
           if (type === 4) keys.push({ down: message[1] === 1, key: message.readUInt32BE(4) });
           if (type === 5) pointers.push({ buttons: message[1], x: message.readUInt16BE(2), y: message.readUInt16BE(4) });
           if (type === 6) clipboard.push(message.subarray(8).toString('latin1'));
+          if (type === 23) {
+            if (length !== 58 || message[1] !== 0 || message.readUInt16BE(4) !== 1 || message.readUInt16BE(6) !== 11) {
+              throw new Error('Unexpected Apple scroll event header');
+            }
+            appleScrolls.push({
+              lines: [8, 10, 12].map(offset => message.readInt16BE(offset)),
+              fixed: [14, 18, 22].map(offset => message.readInt32BE(offset)),
+              points: [26, 30, 34].map(offset => message.readInt32BE(offset)),
+              phase: message.readUInt32BE(38), momentum: message.readUInt32BE(42),
+              count: message.readUInt32BE(46), flags: message.readUInt32BE(50),
+              x: message.readUInt16BE(54), y: message.readUInt16BE(56),
+            });
+          }
           if (type === 8) {
             if (message[1] !== 0) throw new Error('Apple scaling padding must be zero');
             const scale = message.readDoubleBE(2);
@@ -262,7 +281,7 @@ export async function startVncServer(options: FakeVncOptions = {}) {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   return {
-    port, keys, pointers, clipboard, scales, versions, nativeWidth, nativeHeight,
+    port, keys, pointers, appleScrolls, clipboard, scales, versions, nativeWidth, nativeHeight,
     get authenticated() { return authenticated; },
     get connections() { return sockets.size; },
     get framebufferRequests() { return framebufferRequests; },
