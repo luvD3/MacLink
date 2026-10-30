@@ -594,8 +594,11 @@ test('pending drag sends the final scaled position before release and is cancell
         // handlers. This must not send another pointer event after disconnect.
         dispatch('mouseup', .625, .65, 0);
       }
+      // MouseEvent client coordinates are integral CSS pixels; a narrow
+      // fitted canvas can map one CSS pixel to more than three remote pixels.
       return { hadPending: pending !== null, cancelled, pendingAfter: rfb._mouseMoveTimer !== null,
-        expectedX: target.width * .625, expectedY: target.height * .65 };
+        expectedX: target.width * .625, expectedY: target.height * .65,
+        tolerance: Math.ceil(target.width / box.width) + 1 };
     } finally { Date.now = originalNow; window.clearTimeout = originalClear; }
   }, action);
 
@@ -606,8 +609,8 @@ test('pending drag sends the final scaled position before release and is cancell
   const released = server.pointers.slice(firstPointer);
   expect(released.map(event => event.buttons)).toEqual([0, 1, 1, 0]);
   expect(released[2]).toEqual({ ...released[3], buttons: 1 });
-  expect(Math.abs(released[3].x - release.expectedX)).toBeLessThanOrEqual(3);
-  expect(Math.abs(released[3].y - release.expectedY)).toBeLessThanOrEqual(3);
+  expect(Math.abs(released[3].x - release.expectedX)).toBeLessThanOrEqual(release.tolerance);
+  expect(Math.abs(released[3].y - release.expectedY)).toBeLessThanOrEqual(release.tolerance);
   await page.waitForTimeout(40);
   expect(server.pointers.slice(firstPointer)).toEqual(released);
 
