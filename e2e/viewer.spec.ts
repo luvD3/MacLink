@@ -19,7 +19,8 @@ async function launch(extraArgs: string[] = []) {
   page = await application.firstWindow();
   await application.evaluate(async ({ clipboard, ClipboardItem }) => {
     // Keep the user's clipboard inside this process, never in test output.
-    const items = await clipboard.read();
+    // Windows can report an empty clipboard as an item without MIME types.
+    const items = (await clipboard.read()).filter(item => item.types.length > 0);
     (globalThis as unknown as { originalClipboard: Electron.ClipboardItem[] }).originalClipboard = await Promise.all(items.map(async item =>
       new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)])))),
     ));
